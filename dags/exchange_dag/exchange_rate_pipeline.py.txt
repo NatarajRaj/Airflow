@@ -1,0 +1,47 @@
+# Imports
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+from airflow.operators.email import EmailOperator
+from airflow.utils.dates import days_ago
+from datetime import timedelta
+from datetime import datetime
+from clean_data import clean_data
+
+# Define or Instantiate DAG
+dag = DAG(
+    'exchange_rate_etl',
+    start_date=datetime(2024, 12, 1),
+    end_date=datetime(2025, 1, 25),
+    schedule_interval='* * * * *',  # Run every minute
+    default_args={"retries": 2, "retry_delay": timedelta(minutes=5)},
+    catchup=False,  # Ensure no backfilling occurs
+)
+
+# Define or Instantiate Tasks
+download_task = BashOperator(
+    task_id='download_file',
+    bash_command='cd /tmp && curl -o xrate.csv https://example.com/exchange-rate-data.csv',
+    dag=dag,
+)
+
+clean_data_task = PythonOperator(
+    task_id='clean_data',
+    python_callable=clean_data,
+    dag=dag,
+)
+
+send_email_task = EmailOperator(
+    task_id='send_email',
+    to='anataraj95@gmail.com',
+    subject='Exchange Rate ETL - Successful',
+    html_content="""<p>The Exchange Rate ETL pipeline has successfully completed.</p>
+                    <ul>
+                        <li><b>File Downloaded:</b> xrate.csv</li>
+                        <li><b>Data Cleaned and Saved:</b> Yes</li>
+                    </ul>""",
+    dag=dag,
+)
+
+# Task Dependencies
+download_task >> clean_data_task >> send_email_task

@@ -1,0 +1,58 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'airflow',
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Define the Python functions to be executed
+def greet():
+    print("Hello, Airflow!")
+
+def add_numbers(a, b):
+    result = a + b
+    print(f"The sum of {a} and {b} is {result}")
+    return result
+
+def greet_value(v1,v2):
+    print(f"{v1} , {v2}")
+    return v1+","+v2
+
+# Instantiate the DAG
+with DAG(
+    dag_id='python_operator_dag',
+    default_args=default_args,
+    description='A simple DAG using PythonOperator',
+    start_date=datetime(2025, 1, 28),
+    schedule_interval=timedelta(minutes=1),
+    catchup=False,
+) as dag:
+
+    # Define tasks
+    task1 = PythonOperator(
+        task_id='greet_task',
+        python_callable=greet,
+    )
+
+    task2 = PythonOperator(
+        task_id='add_numbers_task',
+        python_callable=add_numbers,
+        op_args=[3, 5],  # Positional arguments for the function
+    )
+
+    task3 = PythonOperator(
+        task_id='greet_with_value',
+        python_callable=greet_value,
+        op_args=['Hi', 'this is Nataraj'],  # Positional arguments for the function
+    )
+
+   
+
+
+    # Set task dependencies
+    task1 >> task2
+    task2 >> task3

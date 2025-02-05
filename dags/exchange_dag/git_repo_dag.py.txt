@@ -1,0 +1,48 @@
+from airflow import DAG
+from airflow.providers.github.operators.github_repo import GitHubRepoOperator  # Corrected import
+from airflow.operators.dummy_operator import DummyOperator
+from datetime import timedelta
+import logging
+from airflow.utils.dates import days_ago
+
+# Function to log repository tags
+def log_repository_tags(repo):
+    try:
+        tags = list(repo.get_tags())  # Convert generator to list
+        for tag in tags:
+            logging.info(f"Tag: {tag.name}")
+    except Exception as e:
+        logging.error(f"Failed to fetch or log tags: {e}")
+        raise
+
+# Define the DAG
+dag = DAG(
+    'git_repo_dag',
+    default_args={
+        "retries": 2,
+        "retry_delay": timedelta(minutes=5),
+        "start_date": days_ago(1),
+    },
+    schedule_interval='0 21 * * *',  # Run daily at 9:00 PM
+    catchup=False,
+    description='A DAG to interact with GitHub repository and list tags',
+)
+
+# Start Dummy Operator
+start = DummyOperator(task_id='start', dag=dag)
+
+# List GitRepository Tags
+list_repo_tags = GitHubRepoOperator(  # Correct operator
+    task_id="list_repo_tags",
+    github_method="get_repo",
+    github_method_args={"full_name_or_id": "NatarajRaj/airflow_demo"},
+    result_processor=lambda repo: log_repository_tags(repo),
+    github_conn_id="github_default",  # Ensure this is configured in Airflow
+    dag=dag,
+)
+
+# End Dummy Operator
+end = DummyOperator(task_id='end', dag=dag)
+
+# Define task dependencies
+start >> list_repo_tags >> end

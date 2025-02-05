@@ -1,0 +1,378 @@
+windows subsystem for Linux (create virtual Linux image top of windows)
+
+step 1:
+wsl --install   [or]] wsl
+step 2:
+sudo apt update
+sudo apt upgrade
+step 3:
+sudo apt install python3-pip
+step 4:
+sudo apt install python3-virtualenv (installing virtualenv package for best practice)
+
+// create and activate the virtual environment for airflow
+mkdir airflow_project
+cd airflow_project
+
+virtualenv airflow_venv
+   
+source airflow_venv/bin/activate (every time run this venv command for when new terminal open)
+
+step 5: Install apache airflow with constraints
+set on airflow constraints below: (this command, on its automatically python version fetch basis on the airflow version)
+
+AIRFLOW_VERSION=2.6.2
+PYTHON_VERSION="$(python --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+			[or]
+AIRFLOW_VERSION=2.6.2
+PYTHON_VERSION=3.10
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+// installing the apache airflow using above constraints
+pip install apache-airflow==${AIRFLOW_VERSION} -c ${CONSTRAINT_URL}
+
+airflow version
+
+step 6:
+set the airflow home directory (this command need to be every new terminal open)
+export AIRFLOW_HOME=~/airflow
+
+step 7: Intialize the database (for storing the metadata information about airflow) (SQLite is default db, but its changing the database if need)
+airflow db init
+
+[OR changing on the postgres database]
+cd airflow
+//Install PostgreSQL:
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+//Create a PostgreSQL Database and User:
+sudo -u postgres psql
+#<-------------------------------------------------------------------->
+CREATE DATABASE airflow_db;
+\c airflow_db
+CREATE USER airflow_user WITH PASSWORD 'airflow_password'; 
+ALTER ROLE airflow_user SET client_encoding TO 'utf8';
+ALTER ROLE airflow_user SET default_transaction_isolation TO 'read committed';
+ALTER ROLE airflow_user SET timezone TO 'UTC';
+GRANT CREATE ON SCHEMA public TO airflow_user;
+GRANT ALL PRIVILEGES ON DATABASE airflow_db TO airflow_user;
+#<-------------------------------------------------------------------->
+\dt   (listout the tables)
+\q    (quit)
+
+//Configure Airflow to Use PostgreSQL:
+//Open the Airflow configuration file (airflow.cfg):
+nano $AIRFLOW_HOME/airflow.cfg
+sql_alchemy_conn = postgresql+psycopg2://airflow_user:airflow_password@localhost:5432/airflow_db
+
+pip install psycopg2-binary
+
+//Initialize the Airflow Database:
+source ~/airflow_project/airflow_venv/bin/activate
+airflow db init
+
+[step 8:]
+// start the web server (UI)
+source ~/airflow_project/airflow_venv/bin/activate
+airflow webserver --port 8085
+
+//if already run the same port with example pid:1234, by using kill command , restarting the web server,
+
+kill -9 <pid>
+airflow webserver --port 8085 
+
+[step 9:]
+// start the airflow scheduler (SCHEDULER]
+//open the new terminal
+source ~/airflow_project/airflow_venv/bin/activate
+airflow scheduler
+
+accessing airflow:
+http://localhost:8085
+
+// to kill already running pid web server, airflow scheduler
+ps aux | grep airflow
+kill -9 <pid>
+
+sudo lsof -i :8793
+sudo kill -9 <PID>
+kill $(cat ~/airflow/airflow-scheduler.pid)
+
+
+
+step 10:
+//open the new terminal prompt
+source ~/airflow_project/airflow_venv/bin/activate
+
+cd /home/nataraj_unix/
+mkdir dags
+cd dags
+
+//Configure Airflow to Use /home/nataraj_unix/dags:
+//Open the Airflow configuration file (airflow.cfg):
+nano $AIRFLOW_HOME/airflow.cfg
+dags_folder = /home/nataraj_unix/dags
+
+//write the dag file inside the dags folder
+vi etl_dag.py    
+
+#<-------------------------------------------------------------------->
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime, timedelta
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email': ['anataraj95@gmail.com'],  
+    'email_on_failure': True,             
+    'email_on_retry': True,               
+    'email_on_success': True,            
+    'retries': 1,
+    'retry_delay': timedelta(minutes=1),
+}
+
+dag = DAG(
+    'etl_dag',  # DAG name
+    default_args=default_args,
+    description='A simple ETL DAG',
+    schedule_interval=timedelta(minutes=1),
+    start_date=datetime(2025, 1, 27),
+    catchup=False,
+)
+
+run_etl = BashOperator(
+    task_id='run_etl',
+    bash_command='bash /home/nataraj_unix/wrapper_script.sh ', #give a space after the path
+    dag=dag,
+)
+
+# or directly give PythonOperator used to apply python file here
+
+from airflow.operators.email_operator import EmailOperator
+
+send_email = EmailOperator(
+    task_id='send_email',
+    to='anataraj95@gmail.com',
+    subject='ETL Task Notification',
+    html_content='The ETL task has been executed!',
+    dag=dag,
+)
+
+run_etl >> send_email  # Make sure the email task runs after the ETL task
+#<-------------------------------------------------------------------->
+
+:wq!
+
+step 11:
+// place the wrapper_script.sh in this path "/home/nataraj_unix/wrapper_script.sh"
+// go to the /home/ubuntu path, open the wrapper_script.sh
+pwd
+cd ..
+cd home/nataraj_unix
+vi wrapper_script.sh   (if not create)
+
+#<-------------------------------------------------------------------->
+#!/bin/bash
+python3 /home/nataraj_unix/etl_script.py
+#<-------------------------------------------------------------------->
+
+
+step 12:
+// create the etl_script.py file
+// go to the /home/ubuntu path, open the etl_script.py
+pwd
+cd ..
+cd home/nataraj_unix
+mkdir airflow_extract    (output directory here)
+vi etl_script.py
+
+#<-------------------------------------------------------------------->
+import psycopg2  # Corrected the import for PostgreSQL connection
+import pandas as pd
+from datetime import datetime
+import os
+
+def fetch_data_from_psql():
+    # PostgreSQL connection configuration
+    psql_config = {
+        'host': 'localhost',
+        'user': 'postgres', 
+        'password': 'Nataraj@123', 
+        'dbname': 'data_processing'  # Changed to `dbname` for psycopg2
+    }
+
+    # Establish connection to PostgreSQL
+    try:
+        connection = psycopg2.connect(**psql_config)
+        query = 'SELECT * FROM sample_data'
+        df = pd.read_sql_query(query, connection)
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        df = pd.DataFrame()  # Return an empty DataFrame in case of an error
+    finally:
+        connection.close()
+    
+    return df
+
+def transform_data(df):
+    # Apply transformation logic
+    if df.empty:
+        print("DataFrame is empty. Skipping transformation.")
+        return df
+    df_transformed = df[df['age'] > 30]
+    return df_transformed
+
+def write_data_to_file(df):
+    # Write DataFrame to a CSV file
+    if df.empty:
+        print("Transformed DataFrame is empty. No data written to file.")
+        return
+    
+    output_dir = '/home/nataraj_unix/airflow_extract'  # Corrected path
+    os.makedirs(output_dir, exist_ok=True)  # Ensure the directory exists
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    file_name = f'etl_output_{timestamp}.csv'
+    file_path = os.path.join(output_dir, file_name)
+    
+    df.to_csv(file_path, index=False)
+    print(f'Data written to {file_path}')
+
+def etl_process():
+    # Execute the ETL process
+    df = fetch_data_from_psql()
+    df_transformed = transform_data(df)
+    write_data_to_file(df_transformed)
+
+if __name__ == "__main__":
+    etl_process()
+#<-------------------------------------------------------------------->
+
+
+step 13:
+//check the import, from the path /home/nataraj_unix 
+sudo apt update
+sudo apt install -y python3-dev libpq-dev gcc
+pip install pandas
+pip install psycopg2-binary
+pip install psycopg2
+
+# Create a new virtual environment
+#python3 -m venv new_venv
+#source new_venv/bin/activate
+# Install psycopg2
+#pip install psycopg2
+
+sudo apt update
+
+step 14:
+// to make sure ddl table creation 
+psql -U postgres -h localhost
+#<-------------------------------------------------------------------->
+-- Create database if it does not exist
+-- Note: In PostgreSQL, there is no "IF NOT EXISTS" for CREATE DATABASE
+CREATE DATABASE data_processing;
+
+-- Switch to the database (do this in psql or connect directly to this DB)
+\c data_processing
+
+-- Create the table if it does not already exist
+CREATE TABLE IF NOT EXISTS sample_data (
+    id SERIAL PRIMARY KEY, -- Use SERIAL for auto-increment
+    name VARCHAR(255),
+    age INT,
+    city VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert sample data into the table
+INSERT INTO sample_data (name, age, city) VALUES 
+('Alice', 30, 'New York'),
+('Bob', 25, 'Los Angeles'),
+('Charlie', 35, 'Chicago'),
+('Kumar', 40, 'New York');
+#<-------------------------------------------------------------------->
+
+
+
+
+step 14:
+// output file shown in here
+/home/nataraj_unix/airflow_extract
+ls -ltr
+
+step 15:
+// email notification setup
+//open the new prompt terminal
+source ~/airflow_project/airflow_venv/bin/activate
+cd home/nataraj_unix/airflow
+vi airflow.cfg
+
+#<-------------------------------------------------------------------->
+//Example for Gmail SMTP:
+[smtp]
+smtp_host = smtp.gmail.com
+smtp_starttls = True
+smtp_ssl = False
+smtp_user = anataraj95@gmail.com
+smtp_password = jhxfxlowttqvxopx
+smtp_port = 587
+smtp_mail_from = anataraj95@gmail.com
+smtp_timeout = 30
+smtp_retry_limit = 5
+#<-------------------------------------------------------------------->
+// google app password
+Go to your Google Account Security settings: Google Security.
+Enable 2-Step Verification if it's not already enabled.
+Under the "Signing in to Google" section, click App Passwords.
+Generate an app password for "Mail" and "Other (custom name: Airflow)".
+Replace SMTP password with the generated app password:
+
+
+
+//verify the email notification allowed or not
+telnet smtp.gmail.com 587
+// if not install the telnet
+sudo apt update
+sudo apt install telnet
+telnet smtp.gmail.com 587
+
+
+//listout the airflow dag details
+airflow dags list
+
+# Stop the webserver and scheduler (if running)
+airflow webserver --stop
+pkill -f "airflow webserver"
+
+airflow scheduler --stop
+pkill -f "airflow scheduler"
+
+# Restart the webserver and scheduler
+sudo kill -9 <PID>
+airflow webserver --port 8085
+
+sudo lsof -i :8793
+sudo kill -9 <PID>
+airflow scheduler
+
+
+//additional steps:
+// setup the username and password
+//open the new terminal
+source ~/airflow_project/airflow_venv/bin/activate
+
+airflow users create \
+ --username admin \
+ --firstname natarajan \
+ --lastname annadurai \
+ --role Admin \
+ --email anataraj95@gmail.com
+
+
+
+//shortcut for the airflow db shell
+airflow db shell
+

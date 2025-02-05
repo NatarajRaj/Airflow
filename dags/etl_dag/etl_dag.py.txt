@@ -1,0 +1,43 @@
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime, timedelta
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email': ['anataraj95@gmail.com'],  
+    'email_on_failure': True,             
+    'email_on_retry': True,               
+    'email_on_success': True,            
+    'retries': 1,
+    'retry_delay': timedelta(minutes=1),
+}
+
+dag = DAG(
+    'etl_dag',  # DAG name
+    default_args=default_args,
+    description='A simple ETL DAG',
+    schedule_interval=timedelta(minutes=1),
+    start_date=datetime(2025, 1, 27),
+    catchup=False,
+)
+
+run_etl = BashOperator(
+    task_id='run_etl',
+    bash_command='bash /home/nataraj_unix/wrapper_script.sh ', #give a space after the path
+    dag=dag,
+)
+
+# or directly give PythonOperator used to apply python file here
+
+from airflow.operators.email_operator import EmailOperator
+
+send_email = EmailOperator(
+    task_id='send_email',
+    to='anataraj95@gmail.com',
+    subject='ETL Task Notification',
+    html_content='The ETL task has been executed!',
+    dag=dag,
+)
+
+run_etl >> send_email  # Make sure the email task runs after the ETL task

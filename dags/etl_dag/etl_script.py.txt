@@ -1,0 +1,58 @@
+import psycopg2  # Corrected the import for PostgreSQL connection
+import pandas as pd
+from datetime import datetime
+import os
+
+def fetch_data_from_psql():
+    # PostgreSQL connection configuration
+    psql_config = {
+        'host': 'localhost',
+        'user': 'postgres', 
+        'password': 'Nataraj@123', 
+        'dbname': 'data_processing'  # Changed to `dbname` for psycopg2
+    }
+
+    # Establish connection to PostgreSQL
+    try:
+        connection = psycopg2.connect(**psql_config)
+        query = 'SELECT * FROM sample_data'
+        df = pd.read_sql_query(query, connection)
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        df = pd.DataFrame()  # Return an empty DataFrame in case of an error
+    finally:
+        connection.close()
+    
+    return df
+
+def transform_data(df):
+    # Apply transformation logic
+    if df.empty:
+        print("DataFrame is empty. Skipping transformation.")
+        return df
+    df_transformed = df[df['age'] > 30]
+    return df_transformed
+
+def write_data_to_file(df):
+    # Write DataFrame to a CSV file
+    if df.empty:
+        print("Transformed DataFrame is empty. No data written to file.")
+        return
+    
+    output_dir = '/home/nataraj_unix/airflow_extract'  # Corrected path
+    os.makedirs(output_dir, exist_ok=True)  # Ensure the directory exists
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    file_name = f'etl_output_{timestamp}.csv'
+    file_path = os.path.join(output_dir, file_name)
+    
+    df.to_csv(file_path, index=False)
+    print(f'Data written to {file_path}')
+
+def etl_process():
+    # Execute the ETL process
+    df = fetch_data_from_psql()
+    df_transformed = transform_data(df)
+    write_data_to_file(df_transformed)
+
+if __name__ == "__main__":
+    etl_process()

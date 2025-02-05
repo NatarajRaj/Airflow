@@ -1,0 +1,2 @@
+#!/bin/bash
+python3 /home/nataraj_unix/etl_script.py

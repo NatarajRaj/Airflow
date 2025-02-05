@@ -1,0 +1,69 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+
+
+#xcom  - cross communications dag
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'airflow',
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Function to generate a greeting message
+def generate_greeting(**kwargs):
+    message = "Hello, Airflow!"
+    # Push the message to XCom
+    kwargs['ti'].xcom_push(key='greeting', value=message)
+
+# Function to add two numbers and push the result to XCom
+def add_numbers(a, b, **kwargs):
+    result = a + b
+    # Push the result to XCom
+    kwargs['ti'].xcom_push(key='sum', value=result)
+
+# Function to retrieve and print the greeting and sum from XCom
+def display_results(**kwargs):
+    # Pull the greeting message from XCom
+    greeting = kwargs['ti'].xcom_pull(key='greeting', task_ids='generate_greeting_task')
+    # Pull the sum result from XCom
+    sum_result = kwargs['ti'].xcom_pull(key='sum', task_ids='add_numbers_task')
+    print(f"{greeting} The sum of the numbers is {sum_result}.")
+
+# Instantiate the DAG
+with DAG(
+    dag_id='xcom_example_dag',
+    default_args=default_args,
+    description='A DAG demonstrating XCom usage',
+    start_date=datetime(2025, 1, 28),
+    schedule_interval=timedelta(minutes=1),
+    #schedule_interval='0 8 * * *',  # Runs at 8:00 AM every day
+    catchup=False,
+) as dag:
+
+    # Task to generate a greeting message
+    generate_greeting_task = PythonOperator(
+        task_id='generate_greeting_task',
+        python_callable=generate_greeting,
+        provide_context=True,
+    )
+
+    # Task to add two numbers
+    add_numbers_task = PythonOperator(
+        task_id='add_numbers_task',
+        python_callable=add_numbers,
+        op_args=[3, 5],
+        provide_context=True,
+    )
+
+    # Task to display the results
+    display_results_task = PythonOperator(
+        task_id='display_results_task',
+        python_callable=display_results,
+        provide_context=True,
+    )
+
+    # Set task dependencies
+    [generate_greeting_task, add_numbers_task] >> display_results_task

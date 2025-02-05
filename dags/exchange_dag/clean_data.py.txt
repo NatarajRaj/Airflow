@@ -1,0 +1,42 @@
+import os
+import pandas as pd
+from datetime import datetime
+
+def clean_data():
+    try:
+        # Define raw data path
+        raw_data_path = '/tmp/xrate.csv'
+
+        # Check if file exists
+        if not os.path.exists(raw_data_path):
+            raise FileNotFoundError(f"File not found: {raw_data_path}")
+
+        # Load raw data into DataFrame
+        data = pd.read_csv(raw_data_path, header=None)
+
+        # Cleanse Data: Fill NaN values with appropriate defaults
+        cleaned_data = data.fillna({
+            0: 0,    # Assuming first column should be integer, replacing NaN with 0
+            1: 0.0,  # Assuming second column should be float, replacing NaN with 0.0
+            2: ''    # Assuming third column should be string, replacing NaN with empty string
+        })
+
+        # Get current date components for directory structure
+        now = datetime.now()
+        year, month, day = now.year, now.month, now.day
+
+        # Create directory path for cleaned data storage
+        data_dir = f'/home/nataraj_unix/exchange_rate/data/xrate_cleansed/{year}/{month}/{day}'
+        os.makedirs(data_dir, exist_ok=True)
+
+        # Define the path where the cleaned data will be saved
+        cleaned_data_path = f'{data_dir}/xrate.csv'
+
+        # Save the cleaned data to the new path
+        cleaned_data.to_csv(cleaned_data_path, index=False)
+
+        print(f"Data cleaned and saved successfully at {cleaned_data_path}")
+
+    except Exception as e:
+        print(f"Error in clean_data: {e}")
+        raise

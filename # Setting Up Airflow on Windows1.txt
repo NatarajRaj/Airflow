@@ -1,0 +1,329 @@
+# Setting Up Airflow on Windows Subsystem for Linux (WSL)
+
+## Step 1: Install WSL
+1. Install WSL:
+   ```bash
+   wsl --install
+   ```
+   Or, simply run:
+   ```bash
+   wsl
+   ```
+
+2. Update and upgrade system packages:
+   ```bash
+   sudo apt update
+   sudo apt upgrade
+   ```
+
+## Step 2: Install Python and Virtual Environment
+1. Install `python3-pip`:
+   ```bash
+   sudo apt install python3-pip
+   ```
+
+2. Install `python3-virtualenv` (best practice):
+   ```bash
+   sudo apt install python3-virtualenv
+   ```
+
+## Step 3: Create and Activate a Virtual Environment for Airflow
+1. Create a project directory:
+   ```bash
+   mkdir airflow_project
+   cd airflow_project
+   ```
+
+2. Create a virtual environment:
+   ```bash
+   virtualenv airflow_venv
+   ```
+
+3. Activate the virtual environment (run this every time a new terminal is opened):
+   ```bash
+   source airflow_venv/bin/activate
+   ```
+
+## Step 4: Install Apache Airflow with Constraints
+1. Set Airflow constraints:
+   ```bash
+   AIRFLOW_VERSION=2.6.2
+   PYTHON_VERSION="$(python --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
+   CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+   ```
+   Or specify Python version directly:
+   ```bash
+   AIRFLOW_VERSION=2.6.2
+   PYTHON_VERSION=3.10
+   CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+   ```
+
+2. Install Apache Airflow:
+   ```bash
+   pip install apache-airflow==${AIRFLOW_VERSION} -c ${CONSTRAINT_URL}
+   ```
+
+3. Verify the installation:
+   ```bash
+   airflow version
+   ```
+
+## Step 5: Set the Airflow Home Directory
+Set the `AIRFLOW_HOME` environment variable (run this every time a new terminal is opened):
+```bash
+export AIRFLOW_HOME=~/airflow
+```
+
+## Step 6: Initialize the Database
+1. Initialize the default SQLite database:
+   ```bash
+   airflow db init
+   ```
+
+2. (Optional) Use PostgreSQL as the backend:
+   - Install PostgreSQL:
+     ```bash
+     sudo apt update
+     sudo apt install postgresql postgresql-contrib
+     ```
+
+   - Create a PostgreSQL database and user:
+     ```bash
+     sudo -u postgres psql
+     CREATE DATABASE airflow_db;
+     \c airflow_db
+     CREATE USER airflow_user WITH PASSWORD 'airflow_password'; 
+     ALTER ROLE airflow_user SET client_encoding TO 'utf8';
+     ALTER ROLE airflow_user SET default_transaction_isolation TO 'read committed';
+     ALTER ROLE airflow_user SET timezone TO 'UTC';
+     GRANT CREATE ON SCHEMA public TO airflow_user;
+     GRANT ALL PRIVILEGES ON DATABASE airflow_db TO airflow_user;
+     \q
+     ```
+
+   - Configure Airflow to use PostgreSQL:
+     ```bash
+     nano $AIRFLOW_HOME/airflow.cfg
+     ```
+     Update the `sql_alchemy_conn` entry:
+     ```ini
+     sql_alchemy_conn = postgresql+psycopg2://airflow_user:airflow_password@localhost:5432/airflow_db
+     ```
+   - Install the required Python package:
+     ```bash
+     pip install psycopg2-binary
+     ```
+   - Reinitialize the Airflow database:
+     ```bash
+     airflow db init
+     ```
+
+## Step 7: Start the Airflow Webserver
+1. Activate the virtual environment:
+   ```bash
+   source ~/airflow_project/airflow_venv/bin/activate
+   ```
+
+2. Start the webserver:
+   ```bash
+   airflow webserver --port 8085
+   ```
+
+3. If the port is already in use:
+   ```bash
+   kill -9 <pid>
+   airflow webserver --port 8085
+   ```
+
+## Step 8: Start the Airflow Scheduler
+1. Open a new terminal and activate the virtual environment:
+   ```bash
+   source ~/airflow_project/airflow_venv/bin/activate
+   ```
+
+2. Start the scheduler:
+   ```bash
+   airflow scheduler
+   ```
+
+3. Access Airflow:
+   ```
+   http://localhost:8085
+   ```
+
+## Step 9: Manage Airflow DAGs
+1. Configure the DAGs folder:
+   ```bash
+   nano $AIRFLOW_HOME/airflow.cfg
+   ```
+   Update the `dags_folder` entry:
+   ```ini
+   dags_folder = /home/nataraj_unix/dags
+   ```
+
+2. Create the `dags` folder and write a DAG:
+   ```bash
+   mkdir -p /home/nataraj_unix/dags
+   cd /home/nataraj_unix/dags
+   vi etl_dag.py
+   ```
+
+   Example `etl_dag.py`:
+   ```python
+   from airflow import DAG
+   from airflow.operators.bash import BashOperator
+   from datetime import datetime, timedelta
+
+   default_args = {
+       'owner': 'airflow',
+       'depends_on_past': False,
+       'email_on_failure': False,
+       'email_on_retry': False,
+       'retries': 1,
+       'retry_delay': timedelta(minutes=1),
+   }
+
+   dag = DAG(
+       'etl_dag',
+       default_args=default_args,
+       description='A simple ETL DAG',
+       schedule_interval=timedelta(minutes=1),
+       start_date=datetime(2025, 1, 27),
+       catchup=False,
+   )
+
+   run_etl = BashOperator(
+       task_id='run_etl',
+       bash_command='bash /home/nataraj_unix/wrapper_script.sh ',
+       dag=dag,
+   )
+   ```
+
+## Step 10: Write Supporting Scripts
+1. Create `wrapper_script.sh`:
+   ```bash
+   cd /home/nataraj_unix
+   vi wrapper_script.sh
+   ```
+   Content:
+   ```bash
+   #!/bin/bash
+   python3 /home/nataraj_unix/etl_script.py
+   ```
+
+2. Create `etl_script.py`:
+   ```bash
+   vi etl_script.py
+   ```
+   Content:
+   ```python
+   import psycopg2
+   import pandas as pd
+   from datetime import datetime
+   import os
+
+   def fetch_data_from_psql():
+       psql_config = {
+           'host': 'localhost',
+           'user': 'postgres',
+           'password': 'Nataraj@123',
+           'dbname': 'data_processing'
+       }
+       try:
+           connection = psycopg2.connect(**psql_config)
+           query = 'SELECT * FROM sample_data'
+           df = pd.read_sql_query(query, connection)
+       except Exception as e:
+           print(f"Error fetching data: {e}")
+           df = pd.DataFrame()
+       finally:
+           connection.close()
+       return df
+
+   def transform_data(df):
+       if df.empty:
+           print("DataFrame is empty. Skipping transformation.")
+           return df
+       return df[df['age'] > 30]
+
+   def write_data_to_file(df):
+       if df.empty:
+           print("Transformed DataFrame is empty. No data written to file.")
+           return
+       output_dir = '/home/nataraj_unix/airflow_extract'
+       os.makedirs(output_dir, exist_ok=True)
+       timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+       file_name = f'etl_output_{timestamp}.csv'
+       file_path = os.path.join(output_dir, file_name)
+       df.to_csv(file_path, index=False)
+       print(f'Data written to {file_path}')
+
+   def etl_process():
+       df = fetch_data_from_psql()
+       df_transformed = transform_data(df)
+       write_data_to_file(df_transformed)
+
+   if __name__ == "__main__":
+       etl_process()
+   ```
+
+3. Install required Python packages:
+   ```bash
+   sudo apt install -y python3-dev libpq-dev gcc
+   pip install pandas psycopg2-binary
+   ```
+
+## Step 11: Set Up PostgreSQL Tables
+1. Access PostgreSQL:
+   ```bash
+   psql -U postgres -h localhost
+   ```
+2. Create database and table:
+   ```sql
+   CREATE DATABASE data_processing;
+   \c data_processing
+   CREATE TABLE IF NOT EXISTS sample_data (
+       id SERIAL PRIMARY KEY,
+       name VARCHAR(255),
+       age INT,
+       city VARCHAR(255),
+       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
+   INSERT INTO sample_data (name, age, city) VALUES 
+   ('Alice', 30, 'New York'),
+   ('Bob', 25, 'Los Angeles'),
+   ('Charlie', 35, 'Chicago'),
+   ('Kumar', 40, 'New York');
+   ```
+
+## Step 12: Manage Running Services
+1. Check and kill processes:
+   ```bash
+   ps aux | grep airflow
+   kill -9 <PID>
+   ```
+
+2. Restart the webserver and scheduler:
+   ```bash
+   airflow webserver --port 8085
+   airflow scheduler
+   ```
+
+## Step 13: Create Airflow User
+1. Create a new admin user:
+   ```bash
+   airflow users create \
+    --username admin \
+    --firstname natarajan \
+    --lastname annadurai \
+    --role Admin \
+    --email anataraj95@gmail.com
+   ```
+
+## Step 14: Verify Output
+1. Output files are saved in:
+   ```bash
+   /home/nataraj_unix/airflow_extract
+   ```
+2. Check the Airflow UI to confirm successful DAG runs.
+

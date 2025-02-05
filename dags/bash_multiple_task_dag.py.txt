@@ -1,0 +1,40 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+
+default_args = {
+    'owner': 'airflow',
+    'retries': 5,
+    'retry_delay': timedelta(minutes=1),
+}
+
+with DAG(
+    dag_id='multiple_task_dag',
+    default_args=default_args,
+    description='This is the first DAG',
+    start_date=datetime(2025, 1, 28),
+    schedule_interval=timedelta(minutes=1),
+    #schedule_interval='0 10 * * *',  # Cron expression for 5 AM every day
+    catchup=False,
+) as dag:
+
+    task1 = BashOperator(
+        task_id='task1',
+        bash_command='echo "Hello world, this is the first task!"',
+    )
+
+    task2 = BashOperator(
+        task_id='task2',
+        bash_command='echo "Hello world, this is the second task!"',
+    )
+
+    task3 = BashOperator(
+        task_id='task3',
+        bash_command='echo "Hello world, this is the third task!"',
+    )
+
+    # Setting task dependencies
+    task1 >> [task2, task3]
+
+    # Alternatively, you can use:
+    # task1.set_downstream([task2, task3])
